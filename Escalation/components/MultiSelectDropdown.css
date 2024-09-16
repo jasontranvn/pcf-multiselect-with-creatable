@@ -1,0 +1,12 @@
+.multi-select-dropdown {
+  width: 100%;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.ms-BasePicker-text {
+  width: 100% !important;
+}
+
+.ms-Suggestions-container {
+  width: 100%; 
+}
