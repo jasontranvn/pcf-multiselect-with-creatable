@@ -18,7 +18,7 @@
       -->
     </external-service-usage>
     <!-- property node identifies a specific, configurable piece of data that the control expects from CDS -->
-      <property name="concernComplaintId" display-name-key="ConcernComplaint_DisplayName" of-type="SingleLine.Text" usage="bound" />
+      <property name="causeOfEscalationCheck" display-name-key="CauseOfEscalationCheck_DisplayName" of-type="TwoOptions" usage="bound" />
     <!--
       Property node's of-type attribute can be of-type-group attribute.
       Example:
