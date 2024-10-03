@@ -4,15 +4,12 @@ import MultiSelectDropdown from './components/MultiSelectDropdown';
 import {
   fetchBridgeTable,
   fetchAvailableEscalationOptions,
+  fetchUserTeams,
 } from './services/escalationService';
 import { OptionType } from './services/types';
 
 const getConcernComplaintId = (): string => {
   return Xrm.Page.data.entity.getId();
-};
-
-const getCurrentUserId = (): string => {
-  return Xrm.Utility.getGlobalContext().userSettings.userId;
 };
 
 export class Escalation

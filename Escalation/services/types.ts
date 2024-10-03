@@ -1,19 +1,21 @@
-// types.ts
-
 // Interface for Bridge Table Record
 export interface BridgeRecord {
   nfcu_casecauseofescalationid: string;
   _nfcu_causeofescalation_value: string;
-  ownerid: string; // User who picked the tag for the case
+  ownerid: string; // User or team who picked the tag for the case
 }
 
 export interface EscalationRecord {
   nfcu_causeofescalationid: string;
   nfcu_name: string;
-  _ownerid_value?: string; // Add this field, assuming it's optional
+  _ownerid_value?: string; // Owner ID (team or user)
   ownerid_systemuser?: {
-    // Assuming this is where the owner's full name is stored
+    // This is where the user's full name would be stored if the owner was a user
     fullname: string;
+  };
+  ownerid_team?: {
+    // This is where the team name is stored if the owner is a team
+    name: string;
   };
 }
 
@@ -21,11 +23,10 @@ export interface EscalationRecord {
 export interface Tag {
   id: string; // nfcu_causeofescalationid
   label: string; // nfcu_name
-  owner: string; // Owner's full name from Cause of Escalation table
+  owner: string; // Owner's team name or user's full name from Cause of Escalation table
   bridgeRecordId: string; // nfcu_casecauseofescalationid
 }
 
-// Props definition for MultiSelectDropdown
 export interface MultiSelectDropdownProps {
   concernComplaintId: string;
   selectedValues: OptionType[];
@@ -39,8 +40,9 @@ export interface OptionType {
   owner?: string;
 }
 
+// Entity structure for bridge record in Dynamics
 export interface BridgeRecordEntity {
   nfcu_casecauseofescalationid: string;
   _nfcu_causeofescalation_value: string;
-  ownerid: string;
+  ownerid: string; // Owner ID (team or user)
 }

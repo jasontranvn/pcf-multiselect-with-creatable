@@ -1,5 +1,3 @@
-// MultiSelectDropdown.tsx
-
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { TagPicker, ITag, IBasePicker } from '@fluentui/react/lib/Pickers';
@@ -7,26 +5,12 @@ import { IconButton } from '@fluentui/react/lib/Button';
 import './MultiSelectDropdown.css';
 import {
   fetchBridgeTable,
-  fetchEscalationDetails,
-  fetchEscalationTags,
   fetchAvailableEscalationOptions,
   addEscalationToBridgeTable, // Make sure this is exported
   removeEscalationFromBridgeTable, // Make sure this is exported
   getCurrentUserId,
 } from '../services/escalationService';
-
-export interface OptionType {
-  id: string;
-  label: string;
-  bridgeRecordId?: string;
-  owner?: string;
-}
-
-export interface MultiSelectDropdownProps {
-  concernComplaintId: string;
-  selectedValues: OptionType[];
-  onSelectionChange: (selectedOptions: OptionType[]) => void;
-}
+import { OptionType, MultiSelectDropdownProps } from '../services/types';
 
 const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   concernComplaintId,
@@ -43,30 +27,99 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   const [calloutWidth, setCalloutWidth] = useState<number | undefined>(
     undefined,
   );
+  const [tagsNotOwned, setTagsNotOwned] = useState<Set<string>>(new Set()); // <-- Define tagsNotOwned here
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Fetch bridge table records and map them to selected tags
         const fetchedBridgeRecords = await fetchBridgeTable(concernComplaintId);
         const fetchedEscalations = await fetchAvailableEscalationOptions();
 
-        // Map bridge records to selected tags with bridgeRecordId
+        console.log('Bridge Records:', fetchedBridgeRecords);
+        console.log('Escalation Options:', fetchedEscalations);
+
+        // Create a set of escalation IDs from available escalations (owned by the user's teams)
+        const fetchedEscalationIds = new Set(
+          fetchedEscalations.map((esc) => esc.id),
+        );
+
+        // Find the difference: tags in the bridge records not owned by user's teams
+        const tagsNotOwned = fetchedBridgeRecords.filter(
+          (record) =>
+            !fetchedEscalationIds.has(record._nfcu_causeofescalation_value),
+        );
+
+        setTagsNotOwned(
+          new Set(tagsNotOwned.map((tag) => tag._nfcu_causeofescalation_value)),
+        );
+
+        // Fetch label for tags in tagsNotOwned directly using API calls
+        const fetchedMissingTags = await Promise.all(
+          tagsNotOwned.map(async (record) => {
+            try {
+              const escalationResponse = await Xrm.WebApi.retrieveRecord(
+                'nfcu_causeofescalation',
+                record._nfcu_causeofescalation_value,
+                `?$select=nfcu_name,_ownerid_value`,
+              );
+
+              return {
+                id: record._nfcu_causeofescalation_value,
+                label: escalationResponse
+                  ? escalationResponse.nfcu_name
+                  : 'Unknown Escalation',
+                bridgeRecordId: record.nfcu_casecauseofescalationid,
+                owner: escalationResponse
+                  ? escalationResponse._ownerid_value
+                  : 'No Owner Assigned',
+              };
+            } catch (error) {
+              console.error(
+                `Error fetching escalation details for ID ${record._nfcu_causeofescalation_value}:`,
+                error,
+              );
+              return {
+                id: record._nfcu_causeofescalation_value,
+                label: 'Unknown Escalation',
+                bridgeRecordId: record.nfcu_casecauseofescalationid,
+                owner: 'No Owner Assigned',
+              };
+            }
+          }),
+        );
+
+        // Map all selected tags (whether owned or not)
         const mappedSelected = fetchedBridgeRecords.map((record) => {
+          // Check if it's owned by the user's team
           const escalation = fetchedEscalations.find(
             (esc) => esc.id === record._nfcu_causeofescalation_value,
           );
-          return {
-            id: record._nfcu_causeofescalation_value,
-            label: escalation ? escalation.label : 'Unknown Escalation',
-            bridgeRecordId: record.nfcu_casecauseofescalationid,
-            owner: escalation ? escalation.owner : 'No Owner Assigned',
-          };
+
+          if (escalation) {
+            return {
+              id: escalation.id,
+              label: escalation.label,
+              bridgeRecordId: record.nfcu_casecauseofescalationid,
+              owner: escalation.owner,
+            };
+          } else {
+            const missingTag = fetchedMissingTags.find(
+              (tag) => tag.id === record._nfcu_causeofescalation_value,
+            );
+            return (
+              missingTag || {
+                id: record._nfcu_causeofescalation_value,
+                label: 'Unknown Escalation',
+                bridgeRecordId: record.nfcu_casecauseofescalationid,
+                owner: 'No Owner Assigned',
+              }
+            );
+          }
         });
 
         setSelected(mappedSelected);
 
-        // Set available options by removing already selected options
+        // Filter out selected tags from available options
         const selectedIds = new Set(mappedSelected.map((item) => item.id));
         const available = fetchedEscalations.filter(
           (option) => !selectedIds.has(option.id),
@@ -148,7 +201,6 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
       }
     }
 
-    // Handle removed items
     for (const item of removed) {
       if (item.bridgeRecordId) {
         try {
@@ -162,15 +214,21 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               prev.filter((selectedItem) => selectedItem.id !== item.id),
             );
 
-            // Add the removed option back to availableOptions
-            setAvailableOptions((prev) => [
-              ...prev,
-              {
-                id: item.id,
-                label: item.label,
-                owner: item.owner,
-              },
-            ]);
+            const isNotOwnedTag = tagsNotOwned.has(item.id); // Check if the removed tag is in the not owned set
+            if (isNotOwnedTag) {
+              console.log(
+                `Tag ${item.id} is not owned by the user's team and will not be re-added.`,
+              );
+            } else {
+              setAvailableOptions((prev) => [
+                ...prev,
+                {
+                  id: item.id,
+                  label: item.label,
+                  owner: item.owner,
+                },
+              ]);
+            }
           }
         } catch (error) {
           console.error('Error removing escalation:', error);

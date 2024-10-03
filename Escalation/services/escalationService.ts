@@ -1,15 +1,5 @@
-import {
-  BridgeRecord,
-  BridgeRecordEntity,
-  EscalationRecord,
-  Tag,
-} from './types';
+import { BridgeRecord, BridgeRecordEntity, Tag } from './types';
 
-/**
- * Fetches bridge table records for a given concernComplaintId.
- * @param concernComplaintId The ID of the concern complaint.
- * @returns Promise resolving to an array of BridgeRecord.
- */
 export const fetchBridgeTable = async (
   concernComplaintId: string,
 ): Promise<BridgeRecord[]> => {
@@ -35,11 +25,13 @@ export const fetchBridgeTable = async (
       `Found ${response.entities.length} bridge records for concernComplaintId: ${concernComplaintId}`,
     );
 
+    console.log('Bridge Records:', response.entities);
+
     const bridgeRecords: BridgeRecord[] = response.entities.map(
       (entity: BridgeRecordEntity) => ({
         nfcu_casecauseofescalationid: entity.nfcu_casecauseofescalationid,
         _nfcu_causeofescalation_value: entity._nfcu_causeofescalation_value,
-        ownerid: entity.ownerid, // User who picked the tag for the case
+        ownerid: entity.ownerid,
       }),
     );
 
@@ -54,137 +46,15 @@ export const fetchBridgeTable = async (
   }
 };
 
-export const fetchEscalationDetails = async (
-  escalationId: string,
-): Promise<EscalationRecord | null> => {
-  try {
-    console.log(
-      `Fetching escalation details for escalationId: ${escalationId}`,
-    );
-
-    // First, fetch escalation details, including the ownerid
-    const escalationResponse = await Xrm.WebApi.retrieveRecord(
-      'nfcu_causeofescalation',
-      escalationId,
-      `?$select=nfcu_name,_ownerid_value`,
-    );
-
-    if (!escalationResponse || !escalationResponse.nfcu_name) {
-      console.log(`No escalation found for escalationId: ${escalationId}`);
-      return null;
-    }
-
-    console.log(`Escalation found: ${escalationResponse.nfcu_name}`);
-
-    const escalationRecord: EscalationRecord = {
-      nfcu_causeofescalationid: escalationResponse.nfcu_causeofescalationid,
-      nfcu_name: escalationResponse.nfcu_name,
-      _ownerid_value: escalationResponse._ownerid_value,
-    };
-
-    // Now, fetch the owner's details (fullname) from the systemuser table
-    if (escalationRecord._ownerid_value) {
-      console.log(
-        `Fetching owner details for ownerid: ${escalationRecord._ownerid_value}`,
-      );
-
-      const ownerResponse = await Xrm.WebApi.retrieveRecord(
-        'systemuser',
-        escalationRecord._ownerid_value,
-        `?$select=fullname`,
-      );
-
-      if (!ownerResponse || !ownerResponse.fullname) {
-        console.log(
-          `No owner found for ownerid: ${escalationRecord._ownerid_value}`,
-        );
-      } else {
-        console.log(`Owner found: ${ownerResponse.fullname}`);
-        escalationRecord.ownerid_systemuser = {
-          fullname: ownerResponse.fullname,
-        };
-      }
-    }
-
-    return escalationRecord;
-  } catch (error) {
-    if (error instanceof Error) {
-      console.error(
-        `Error fetching escalation details for ID ${escalationId}:`,
-        error.message,
-      );
-    } else {
-      console.error(
-        `Error fetching escalation details for ID ${escalationId}:`,
-        error,
-      );
-    }
-    return null;
-  }
-};
-
 /**
- * Combines bridge records with escalation details to create Tag objects.
- * @param concernComplaintId The ID of the concern complaint.
- * @returns Promise resolving to an array of Tag.
- */
-export const fetchEscalationTags = async (
-  concernComplaintId: string,
-): Promise<Tag[]> => {
-  try {
-    console.log(
-      `Fetching escalation tags for concernComplaintId: ${concernComplaintId}`,
-    );
-
-    const bridgeRecords = await fetchBridgeTable(concernComplaintId);
-
-    if (bridgeRecords.length === 0) {
-      console.log(
-        `No bridge records found for concernComplaintId: ${concernComplaintId}`,
-      );
-      return [];
-    }
-
-    const tags: Tag[] = [];
-
-    for (const record of bridgeRecords) {
-      console.log(
-        `Fetching escalation details for causeofescalation value: ${record._nfcu_causeofescalation_value}`,
-      );
-      const escalation = await fetchEscalationDetails(
-        record._nfcu_causeofescalation_value,
-      );
-
-      if (escalation) {
-        console.log(
-          `Escalation details found: ${escalation.nfcu_name}, Owner: ${escalation.ownerid_systemuser?.fullname}`,
-        );
-        tags.push({
-          id: escalation.nfcu_causeofescalationid,
-          label: escalation.nfcu_name,
-          owner: escalation.ownerid_systemuser?.fullname || 'No Owner Assigned',
-          bridgeRecordId: record.nfcu_casecauseofescalationid,
-        });
-      } else {
-        console.log(
-          `No escalation details found for escalationId: ${record._nfcu_causeofescalation_value}`,
-        );
-      }
-    }
-
-    return tags;
-  } catch (error) {
-    console.error('Error fetching escalation tags:', error);
-    return [];
-  }
-};
-
-/**
- * Fetches all escalation options with owner details.
- * @returns Promise resolving to an array of Tag.
+ * Fetches all available escalation options and returns only those owned by teams the user belongs to.
+ * @param teamMap Map of team IDs and their corresponding names.
+ * @returns Promise<Tag[]> An array of tags representing the escalation options.
  */
 export const fetchAvailableEscalationOptions = async (): Promise<Tag[]> => {
   try {
+    const teams = await fetchUserTeams(); // Ensure teams are fetched globally
+    console.log('Using team map:', teams);
     console.log(`Fetching available escalation options...`);
 
     const query = `?$select=nfcu_causeofescalationid,nfcu_name,_ownerid_value`;
@@ -200,32 +70,34 @@ export const fetchAvailableEscalationOptions = async (): Promise<Tag[]> => {
 
     console.log(`Found ${response.entities.length} escalation options.`);
 
+    console.log('Escalation Records:', response.entities);
+
     const tags: Tag[] = [];
 
     for (const entity of response.entities) {
+      console.log(`Escalation Name (nfcu_name): ${entity.nfcu_name}`);
       console.log(
-        `Fetching owner details for ownerid: ${entity._ownerid_value}`,
-      );
-
-      // Fetch the owner fullname from systemuser table
-      const ownerResponse = await Xrm.WebApi.retrieveRecord(
-        'systemuser',
+        'Escalation Owner ID (_ownerid_value):',
         entity._ownerid_value,
-        `?$select=fullname`,
       );
 
-      if (!ownerResponse || !ownerResponse.fullname) {
-        console.log(`No owner found for ownerid: ${entity._ownerid_value}`);
-      } else {
-        console.log(`Owner found: ${ownerResponse.fullname}`);
-      }
+      if (teams.has(entity._ownerid_value)) {
+        const teamName = teams.get(entity._ownerid_value);
+        console.log(
+          `Escalation owned by user's team: ${teamName} (Team ID: ${entity._ownerid_value})`,
+        );
 
-      tags.push({
-        id: entity.nfcu_causeofescalationid,
-        label: entity.nfcu_name,
-        owner: ownerResponse?.fullname || 'No Owner Assigned',
-        bridgeRecordId: '', // Not applicable for available options
-      });
+        tags.push({
+          id: entity.nfcu_causeofescalationid,
+          label: entity.nfcu_name,
+          owner: teamName || 'No Team Assigned',
+          bridgeRecordId: '', // Not applicable for available options
+        });
+      } else {
+        console.log(
+          `Escalation owned by a team outside the user's teams: ${entity._ownerid_value}`,
+        );
+      }
     }
 
     return tags;
@@ -284,10 +156,43 @@ export const removeEscalationFromBridgeTable = async (
   }
 };
 
-/**
- * Retrieves the current user's ID without curly braces.
- */
 export const getCurrentUserId = (): string => {
   const userId = Xrm.Utility.getGlobalContext().userSettings.userId;
   return userId.replace(/[{}]/g, '');
+};
+
+/**
+ * Fetches the teams the current user is a part of and returns a Map of team ID and team name using Xrm.WebApi.
+ * @returns Promise<Map<string, string>> A map where the key is the team ID and the value is the team name.
+ */
+export const fetchUserTeams = async (): Promise<Map<string, string>> => {
+  const userId = getCurrentUserId();
+  const teamMap = new Map<string, string>();
+
+  try {
+    const response = await Xrm.WebApi.retrieveRecord(
+      'systemuser',
+      userId,
+      `?$select=fullname&$expand=teammembership_association($select=name,teamid)`,
+    );
+
+    if (
+      response &&
+      response.teammembership_association &&
+      response.teammembership_association.length > 0
+    ) {
+      response.teammembership_association.forEach(
+        (team: { teamid: string; name: string }) => {
+          console.log(`Team ID: ${team.teamid}, Team Name: ${team.name}`);
+          teamMap.set(team.teamid, team.name);
+        },
+      );
+    } else {
+      console.log('User is not part of any teams.');
+    }
+  } catch (error) {
+    console.error('Error fetching user teams:', error);
+  }
+
+  return teamMap;
 };
