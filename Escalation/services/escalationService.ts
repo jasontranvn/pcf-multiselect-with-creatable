@@ -31,7 +31,6 @@ export const fetchBridgeTable = async (
       (entity: BridgeRecordEntity) => ({
         nfcu_casecauseofescalationid: entity.nfcu_casecauseofescalationid,
         _nfcu_causeofescalation_value: entity._nfcu_causeofescalation_value,
-        ownerid: entity.ownerid,
       }),
     );
 
@@ -46,14 +45,9 @@ export const fetchBridgeTable = async (
   }
 };
 
-/**
- * Fetches all available escalation options and returns only those owned by teams the user belongs to.
- * @param teamMap Map of team IDs and their corresponding names.
- * @returns Promise<Tag[]> An array of tags representing the escalation options.
- */
 export const fetchAvailableEscalationOptions = async (): Promise<Tag[]> => {
   try {
-    const teams = await fetchUserTeams(); // Ensure teams are fetched globally
+    const teams = await fetchUserTeams();
     console.log('Using team map:', teams);
     console.log(`Fetching available escalation options...`);
 
@@ -69,36 +63,16 @@ export const fetchAvailableEscalationOptions = async (): Promise<Tag[]> => {
     }
 
     console.log(`Found ${response.entities.length} escalation options.`);
-
     console.log('Escalation Records:', response.entities);
 
-    const tags: Tag[] = [];
-
-    for (const entity of response.entities) {
-      console.log(`Escalation Name (nfcu_name): ${entity.nfcu_name}`);
-      console.log(
-        'Escalation Owner ID (_ownerid_value):',
-        entity._ownerid_value,
-      );
-
-      if (teams.has(entity._ownerid_value)) {
-        const teamName = teams.get(entity._ownerid_value);
-        console.log(
-          `Escalation owned by user's team: ${teamName} (Team ID: ${entity._ownerid_value})`,
-        );
-
-        tags.push({
-          id: entity.nfcu_causeofescalationid,
-          label: entity.nfcu_name,
-          owner: teamName || 'No Team Assigned',
-          bridgeRecordId: '', // Not applicable for available options
-        });
-      } else {
-        console.log(
-          `Escalation owned by a team outside the user's teams: ${entity._ownerid_value}`,
-        );
-      }
-    }
+    const tags: Tag[] = response.entities
+      .filter((entity) => teams.has(entity._ownerid_value))
+      .map((entity) => ({
+        id: entity.nfcu_causeofescalationid,
+        label: entity.nfcu_name,
+        owner: teams.get(entity._ownerid_value) || 'No Team Assigned',
+        bridgeRecordId: '',
+      }));
 
     return tags;
   } catch (error) {
@@ -161,10 +135,6 @@ export const getCurrentUserId = (): string => {
   return userId.replace(/[{}]/g, '');
 };
 
-/**
- * Fetches the teams the current user is a part of and returns a Map of team ID and team name using Xrm.WebApi.
- * @returns Promise<Map<string, string>> A map where the key is the team ID and the value is the team name.
- */
 export const fetchUserTeams = async (): Promise<Map<string, string>> => {
   const userId = getCurrentUserId();
   const teamMap = new Map<string, string>();
@@ -195,4 +165,38 @@ export const fetchUserTeams = async (): Promise<Map<string, string>> => {
   }
 
   return teamMap;
+};
+
+export const fetchTagDetailsById = async (
+  tags: BridgeRecord[],
+): Promise<Tag[]> => {
+  return Promise.all(
+    tags.map(async (record) => {
+      try {
+        const escalationResponse = await Xrm.WebApi.retrieveRecord(
+          'nfcu_causeofescalation',
+          record._nfcu_causeofescalation_value,
+          `?$select=nfcu_name,_ownerid_value`,
+        );
+
+        return {
+          id: record._nfcu_causeofescalation_value,
+          label: escalationResponse?.nfcu_name || 'Unknown Escalation',
+          bridgeRecordId: record.nfcu_casecauseofescalationid, // Include the bridgeRecordId
+          owner: escalationResponse?._ownerid_value || 'No Owner Assigned',
+        };
+      } catch (error) {
+        console.error(
+          `Error fetching escalation details for ID ${record._nfcu_causeofescalation_value}:`,
+          error,
+        );
+        return {
+          id: record._nfcu_causeofescalation_value,
+          label: 'Unknown Escalation',
+          bridgeRecordId: record.nfcu_casecauseofescalationid, // Include the bridgeRecordId even on error
+          owner: 'No Owner Assigned',
+        };
+      }
+    }),
+  );
 };

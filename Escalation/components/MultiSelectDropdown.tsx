@@ -6,6 +6,7 @@ import './MultiSelectDropdown.css';
 import {
   fetchBridgeTable,
   fetchAvailableEscalationOptions,
+  fetchTagDetailsById,
   addEscalationToBridgeTable, // Make sure this is exported
   removeEscalationFromBridgeTable, // Make sure this is exported
   getCurrentUserId,
@@ -19,6 +20,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 }) => {
   const [selected, setSelected] = useState<OptionType[]>(selectedValues);
   const [availableOptions, setAvailableOptions] = useState<OptionType[]>([]);
+
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [pickerKey, setPickerKey] = useState(0);
@@ -27,7 +29,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   const [calloutWidth, setCalloutWidth] = useState<number | undefined>(
     undefined,
   );
-  const [tagsNotOwned, setTagsNotOwned] = useState<Set<string>>(new Set()); // <-- Define tagsNotOwned here
+  const [tagsNotOwned, setTagsNotOwned] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchData = async () => {
@@ -53,44 +55,9 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           new Set(tagsNotOwned.map((tag) => tag._nfcu_causeofescalation_value)),
         );
 
-        // Fetch label for tags in tagsNotOwned directly using API calls
-        const fetchedMissingTags = await Promise.all(
-          tagsNotOwned.map(async (record) => {
-            try {
-              const escalationResponse = await Xrm.WebApi.retrieveRecord(
-                'nfcu_causeofescalation',
-                record._nfcu_causeofescalation_value,
-                `?$select=nfcu_name,_ownerid_value`,
-              );
+        const fetchedMissingTags = await fetchTagDetailsById(tagsNotOwned);
 
-              return {
-                id: record._nfcu_causeofescalation_value,
-                label: escalationResponse
-                  ? escalationResponse.nfcu_name
-                  : 'Unknown Escalation',
-                bridgeRecordId: record.nfcu_casecauseofescalationid,
-                owner: escalationResponse
-                  ? escalationResponse._ownerid_value
-                  : 'No Owner Assigned',
-              };
-            } catch (error) {
-              console.error(
-                `Error fetching escalation details for ID ${record._nfcu_causeofescalation_value}:`,
-                error,
-              );
-              return {
-                id: record._nfcu_causeofescalation_value,
-                label: 'Unknown Escalation',
-                bridgeRecordId: record.nfcu_casecauseofescalationid,
-                owner: 'No Owner Assigned',
-              };
-            }
-          }),
-        );
-
-        // Map all selected tags (whether owned or not)
         const mappedSelected = fetchedBridgeRecords.map((record) => {
-          // Check if it's owned by the user's team
           const escalation = fetchedEscalations.find(
             (esc) => esc.id === record._nfcu_causeofescalation_value,
           );
@@ -119,7 +86,6 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 
         setSelected(mappedSelected);
 
-        // Filter out selected tags from available options
         const selectedIds = new Set(mappedSelected.map((item) => item.id));
         const available = fetchedEscalations.filter(
           (option) => !selectedIds.has(option.id),
@@ -190,7 +156,6 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               },
             ]);
 
-            // Remove the added option from availableOptions
             setAvailableOptions((prev) =>
               prev.filter((option) => option.id !== escalation.id),
             );
@@ -315,73 +280,110 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     <div
       ref={containerRef}
       className="multi-select-dropdown"
-      style={{ position: 'relative' }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        position: 'relative',
+        border: '1px solid #ddd',
+        borderRadius: '4px',
+        boxSizing: 'border-box',
+      }}
     >
-      <TagPicker
-        key={pickerKey}
-        componentRef={tagPickerRef}
-        selectedItems={selected.map((item) => ({
-          key: item.id,
-          name: item.label,
-        }))}
-        onChange={handleChange}
-        pickerSuggestionsProps={{
-          suggestionsHeaderText: 'Suggested escalations',
-          noResultsFoundText: 'No escalations found',
+      <div style={{ flex: '1 1 auto', overflow: 'hidden', border: 'none' }}>
+        <TagPicker
+          key={pickerKey}
+          componentRef={tagPickerRef}
+          selectedItems={selected.map((item) => ({
+            key: item.id,
+            name: item.label,
+          }))}
+          onChange={handleChange}
+          pickerSuggestionsProps={{
+            suggestionsHeaderText: 'Suggested escalations',
+            noResultsFoundText: 'No escalations found',
+          }}
+          itemLimit={20}
+          inputProps={{
+            placeholder: 'Select escalations',
+            style: {
+              width: '100%',
+              border: 'none  !important', // Ensure no internal border
+              outline: 'none',
+              backgroundColor: 'transparent', // Ensure background is transparent
+            },
+            value: inputValue,
+            onChange: (
+              event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>,
+              newValue?: string,
+            ) => {
+              setInputValue(newValue || '');
+              if (newValue && newValue.length > 0) {
+                setShowAllSuggestions(false);
+              }
+            },
+          }}
+          styles={{
+            root: {
+              width: '100%',
+              border: 'none !important',
+              boxShadow: 'none',
+              padding: '0px',
+              margin: '0px',
+              backgroundColor: 'transparent', // Ensure the background is transparent
+            },
+            text: { paddingRight: '40px' },
+            input: {
+              border: 'none', // No border around the input field
+              outline: 'none',
+              backgroundColor: 'transparent', // Ensure input background is transparent
+            },
+            itemsWrapper: {
+              border: 'none !important', // No border around selected items container
+              backgroundColor: 'transparent', // Transparent background to match outer
+            },
+          }}
+          pickerCalloutProps={{
+            calloutWidth: calloutWidth,
+          }}
+          onResolveSuggestions={getSuggestions}
+          onEmptyInputFocus={onEmptyInputFocus}
+          onRenderSuggestionsItem={renderSuggestion}
+        />
+      </div>
+      <div
+        style={{
+          width: '30px',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
         }}
-        itemLimit={10}
-        inputProps={{
-          placeholder: 'Select escalations',
-          style: { width: '100%' },
-          value: inputValue,
-          onChange: (
-            event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>,
-            newValue?: string,
-          ) => {
-            setInputValue(newValue || '');
-            if (newValue && newValue.length > 0) {
-              setShowAllSuggestions(false);
-            }
-          },
-        }}
-        styles={{
-          root: { width: '100%' },
-        }}
-        pickerCalloutProps={{
-          calloutWidth: calloutWidth,
-        }}
-        onResolveSuggestions={getSuggestions}
-        onEmptyInputFocus={onEmptyInputFocus}
-        onRenderSuggestionsItem={renderSuggestion}
-      />
-      <IconButton
-        iconProps={{
-          iconName: showAllSuggestions ? 'ChevronUp' : 'ChevronDown',
-        }}
-        title="Toggle options"
-        ariaLabel="Toggle options"
-        onClick={showAllOptions}
-        styles={{
-          root: {
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            backgroundColor: 'transparent',
-            border: 'none',
-            padding: 0,
-            height: '100%',
-          },
-          rootHovered: {
-            backgroundColor: 'transparent',
-          },
-          rootPressed: {
-            backgroundColor: 'transparent',
-          },
-          icon: {
-            color: 'gray',
-          },
-        }}
-      />
+      >
+        <IconButton
+          iconProps={{
+            iconName: showAllSuggestions ? 'ChevronUp' : 'ChevronDown',
+          }}
+          title="Toggle options"
+          ariaLabel="Toggle options"
+          onClick={showAllOptions}
+          styles={{
+            root: {
+              backgroundColor: 'transparent',
+              border: 'none',
+              padding: 0,
+              height: '100%',
+            },
+            rootHovered: {
+              backgroundColor: 'transparent',
+            },
+            rootPressed: {
+              backgroundColor: 'transparent',
+            },
+            icon: {
+              color: 'gray',
+            },
+          }}
+        />
+      </div>
     </div>
   );
 };
