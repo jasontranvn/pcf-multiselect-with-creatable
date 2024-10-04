@@ -187,16 +187,39 @@ export const fetchTagDetailsById = async (
         };
       } catch (error) {
         console.error(
-          `Error fetching escalation details for ID ${record._nfcu_causeofescalation_value}:`,
-          error,
+          `Error fetching escalation details for ID ${record._nfcu_causeofescalation_value}: Possibly deleted. Auto-removing the invalid bridge record.`,
         );
-        return {
-          id: record._nfcu_causeofescalation_value,
-          label: 'Unknown Escalation',
-          bridgeRecordId: record.nfcu_casecauseofescalationid, // Include the bridgeRecordId even on error
-          owner: 'No Owner Assigned',
-        };
+
+        // Auto-remove invalid bridge record since the escalation was not found
+        await removeEscalationFromBridgeTable(
+          record.nfcu_casecauseofescalationid,
+        );
+
+        return null; // Return null to indicate this record should be removed
       }
     }),
-  );
+  ).then((results) => results.filter((tag): tag is Tag => tag !== null)); // Type assertion for filtering out nulls
+};
+
+export const updateEscalationCheckField = async (
+  concernComplaintId: string,
+  isChecked: boolean,
+): Promise<void> => {
+  try {
+    const entity = {
+      nfcu_causeofescalationcheck: isChecked,
+    };
+
+    // Assuming concernComplaintId is the ID of the concern complaint record
+    const response = await Xrm.WebApi.updateRecord(
+      'nfcu_concerncomplaint', // The name of the entity/table
+      concernComplaintId,
+      entity,
+    );
+
+    console.log('Successfully updated the escalation check field', response);
+  } catch (error) {
+    console.error('Error updating the escalation check field:', error);
+    throw error;
+  }
 };

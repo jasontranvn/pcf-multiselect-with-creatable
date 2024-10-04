@@ -10,6 +10,7 @@ import {
   addEscalationToBridgeTable, // Make sure this is exported
   removeEscalationFromBridgeTable, // Make sure this is exported
   getCurrentUserId,
+  updateEscalationCheckField,
 } from '../services/escalationService';
 import { OptionType, MultiSelectDropdownProps } from '../services/types';
 
@@ -30,6 +31,18 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     undefined,
   );
   const [tagsNotOwned, setTagsNotOwned] = useState<Set<string>>(new Set());
+
+  const updateEscalationCheck = async (selectedItems: OptionType[]) => {
+    const isChecked = selectedItems.length > 0;
+    try {
+      await updateEscalationCheckField(concernComplaintId, isChecked);
+      console.log(
+        `Escalation check field updated to ${isChecked ? 'true' : 'false'}`,
+      );
+    } catch (error) {
+      console.error('Error updating escalation check field:', error);
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -73,6 +86,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
             const missingTag = fetchedMissingTags.find(
               (tag) => tag.id === record._nfcu_causeofescalation_value,
             );
+
             return (
               missingTag || {
                 id: record._nfcu_causeofescalation_value,
@@ -167,11 +181,17 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     }
 
     for (const item of removed) {
-      if (item.bridgeRecordId) {
+      const bridgeRecordId =
+        item.bridgeRecordId ||
+        selected.find((selectedItem) => selectedItem.id === item.id)
+          ?.bridgeRecordId;
+      if (bridgeRecordId) {
         try {
-          const success = await removeEscalationFromBridgeTable(
-            item.bridgeRecordId,
+          console.log(
+            `Attempting to remove bridge record with ID: ${bridgeRecordId}`,
           );
+
+          const success = await removeEscalationFromBridgeTable(bridgeRecordId);
 
           // Check if the record was successfully removed
           if (success) {
@@ -198,6 +218,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
         } catch (error) {
           console.error('Error removing escalation:', error);
         }
+      } else {
+        console.error('No Bridge Table ID');
       }
     }
 
@@ -213,6 +235,8 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           ?.owner,
       })),
     );
+
+    await updateEscalationCheck(selectedItems);
   };
 
   const showAllOptions = () => {
@@ -311,6 +335,7 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               outline: 'none',
               backgroundColor: 'transparent', // Ensure background is transparent
             },
+
             value: inputValue,
             onChange: (
               event: React.FormEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -331,7 +356,9 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               margin: '0px',
               backgroundColor: 'transparent', // Ensure the background is transparent
             },
-            text: { paddingRight: '40px' },
+            text: {
+              paddingRight: '40px',
+            },
             input: {
               border: 'none', // No border around the input field
               outline: 'none',
