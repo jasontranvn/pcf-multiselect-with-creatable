@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Project containing your PowerApps Component Framework (PCF) control.",
   "scripts": {
-    "build": "pcf-scripts build",
+    "build": "webpack --config webpack.config.js",
     "clean": "pcf-scripts clean",
     "lint": "pcf-scripts lint",
     "lint:fix": "pcf-scripts lint fix",
@@ -37,6 +37,7 @@
     "pcf-scripts": "^1",
     "pcf-start": "^1",
     "react": "^16.14.0",
-    "typescript": "^4.9.5"
+    "typescript": "^4.9.5",
+    "webpack-cli": "^5.1.4"
   }
 }

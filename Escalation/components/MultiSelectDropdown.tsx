@@ -32,6 +32,23 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
   );
   const [tagsNotOwned, setTagsNotOwned] = useState<Set<string>>(new Set());
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setShowAllSuggestions(false); // Close the dropdown if clicked outside
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
   const updateEscalationCheck = async (selectedItems: OptionType[]) => {
     const isChecked = selectedItems.length > 0;
     try {
@@ -170,14 +187,24 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               },
             ]);
 
-            setAvailableOptions((prev) =>
-              prev.filter((option) => option.id !== escalation.id),
-            );
+            setAvailableOptions((prev) => {
+              const updatedOptions = prev.filter(
+                (option) => option.id !== escalation.id,
+              );
+              // Sort the updated options after filtering out the added item
+              return updatedOptions.sort((a, b) =>
+                a.label.localeCompare(b.label),
+              );
+            });
           }
         } catch (error) {
           console.error('Error adding escalation:', error);
         }
       }
+
+      // After handling the change, reset the dropdown state so it can reopen properly
+      setShowAllSuggestions(false);
+      setInputValue(''); // Reset input to clear any typed value
     }
 
     for (const item of removed) {
@@ -365,8 +392,9 @@ const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
               backgroundColor: 'transparent', // Ensure input background is transparent
             },
             itemsWrapper: {
-              border: 'none !important', // No border around selected items container
-              backgroundColor: 'transparent', // Transparent background to match outer
+              border: 'none !important', // Remove the border around selected items container
+              boxShadow: 'none', // Remove any shadow that might be giving the appearance of a border
+              backgroundColor: 'transparent',
             },
           }}
           pickerCalloutProps={{

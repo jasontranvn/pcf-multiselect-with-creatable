@@ -10,3 +10,13 @@
 .ms-Suggestions-container {
   width: 100%; 
 }
+
+.ms-BasePicker-text {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  background-color: transparent !important; 
+}
+
+
+
